@@ -2,6 +2,8 @@ const WebSocket = require('ws');
 
 var states = [];
 var firstState = true;
+var tryCount = 0;
+var lever0PulledAfterFirstTry = false;
 
 var socket = new WebSocket("ws://nuclear.t.javascript.ninja");
 
@@ -19,7 +21,6 @@ socket.onclose = function(event) {
 };
 
 socket.onmessage = function(event) {
-    console.log(event.data);
     try {
         var data = JSON.parse(event.data);
         if (data.pulled !== undefined) {
@@ -37,7 +38,7 @@ socket.onmessage = function(event) {
         console.log(err);
         process.exit();
     }
-    states.forEach(i => console.log(i));
+    //states.forEach(i => console.log(i));
 };
 
 socket.onerror = function(error) {
@@ -49,8 +50,6 @@ function KState(id, pId) {
     firstState = false;
 
     this.id = id;
-    this.state = false;
-
     if (!this.firstState) {
         this.sames = [].slice.apply(states[this.id - 1].sames);
     } else {
@@ -62,35 +61,27 @@ function KState(id, pId) {
 
 KState.prototype = {
     setPairResult: function(pair, res) {
-        // if (pair === -1) throw new Error(res)
-        if (this.sames[pair] === undefined) {
-            var copyRes = res; // copyRes to be mutaded
-            for (var st = this.id - 1; st > this.id - 20 && states[st] !== undefined && states[st].sames[pair] === undefined; st--) {
-                var prevst = states[st];
-                prevst.sames[pair] = copyRes;
-                if (prevst.cLever === 0) {
-                    copyRes = !copyRes
-                }
-                console.log('copied to ' + st);
-            }
-        }
         this.sames[pair] = res;
-        if (this.isAllSame()) {
+
+        if (this.getPowerOffCheck()) {
             console.log('---------------------------------------------- ' + this.id);
             poweroff(this.id);
         }
     },
     invertResults: function() {
         this.sames = this.sames.map(r => r === undefined ? r : !r);
-    },
-    setChecked: function() {
-        this.state = true;
+        if (tryCount === 1) {
+            lever0PulledAfterFirstTry = !lever0PulledAfterFirstTry;
+        }
     },
     isAllSame: function() {
         return this.sames.every(i => i === true)
     },
     invertSameForLever: function() {
         this.setPairResult(this.cLever - 1, !this.sames[this.cLever - 1])
+    },
+    getPowerOffCheck: function() {
+        return this.isAllSame() && (tryCount === 0 || lever0PulledAfterFirstTry);
     }
 };
 
@@ -128,6 +119,10 @@ function checkLeverSame(stateId, lever1, lever2) {
 }
 
 function poweroff(stateId) {
+
+    if (tryCount > 1) throw new Error("overcome limit");
+    tryCount++;
+
     var mo = {
         action: "powerOff",
         stateId: stateId
@@ -140,6 +135,5 @@ function fillChecks(data) {
     var ks = states[data.stateId];
     if (ks !== undefined) {
         ks.setPairResult(data.lever2 - 1, data.same);
-        ks.setChecked();
     }
 }
